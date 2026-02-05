@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import usb
 
-from fastbootpy import exceptions
+from fastbootpy import exceptions, response
 from fastbootpy import fastboot_manager
 from fastbootpy import i_usb_device
+from fastbootpy.response import Response
 
 
 class USBDevice(i_usb_device.IUSBDevice):
@@ -28,7 +29,7 @@ class USBDevice(i_usb_device.IUSBDevice):
         except usb.USBError as e:
             raise exceptions.USBError(serial=self.usb_device.serial_number, exception=e)
 
-    def recv(self) -> bytes:
+    def recv(self) -> Response:
         device_response = b""
         buffer = b""
         while True:
@@ -40,12 +41,12 @@ class USBDevice(i_usb_device.IUSBDevice):
             except usb.USBError:
                 break
 
-            if buffer == None or buffer == b"":
+            if buffer is None or buffer == b"":
                 break
             else:
                 device_response += buffer
 
-        return device_response
+        return Response(status=device_response[:4], result=device_response[4:])
 
     @staticmethod
     def _get_r_w_endpoints(

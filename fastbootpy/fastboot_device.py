@@ -4,6 +4,7 @@ from fastbootpy import fastboot_manager
 from fastbootpy import fastboot_protocol
 from fastbootpy import usb_device
 from fastbootpy import i_fastboot_device
+from fastbootpy.response import Response
 
 
 class FastbootDevice(i_fastboot_device.IFastbootDevice):
@@ -22,7 +23,7 @@ class FastbootDevice(i_fastboot_device.IFastbootDevice):
         )
         return FastbootDevice(serial, usb_handle)
 
-    def send(self, cmd: str | bytes) -> str:
+    def send(self, cmd: str | bytes) -> Response:
         if isinstance(cmd, str):
             encoded_cmd = cmd.encode("utf-8")
         else:
@@ -30,9 +31,9 @@ class FastbootDevice(i_fastboot_device.IFastbootDevice):
 
         self._usb_handle.send(encoded_cmd)
         device_response = self._usb_handle.recv()
-        return device_response.decode("utf-8")
+        return device_response
 
-    def getvar(self, variable: str) -> str:
+    def getvar(self, variable: str) -> Response:
         prefix = "getvar"
         cmd = fastboot_protocol.FastbootProtocol.encode_cmd(prefix, variable)
         return self.send(cmd)
