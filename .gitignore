@@ -5,7 +5,7 @@ __pycache__
 
 # vscode folders
 .vscode
-
+.idea
 # local files
 /dist
 /scripts
