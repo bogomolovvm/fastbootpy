@@ -24,6 +24,9 @@ class AbstractTransport(ABC):
     def close(self) -> None:
         pass
 
+    @abstractmethod
+    def connect(cls, serial, read_timeout, write_timeout):
+        pass
 
 @dataclass
 class Response:

@@ -1,93 +1,102 @@
 import usb.core
-from .base import AbstractTransport, Response
+import usb.util
+from .base import AbstractTransport
 from .. import exceptions
 
 
 class UsbTransport(AbstractTransport):
-    def __init__(self, serial: str,
-                 read_timeout=AbstractTransport.BASE_READ_TIMEOUT,
-                 write_timeout=AbstractTransport.BASE_WRITE_TIMEOUT):
-        self.usb_device = None
-        self.read_endpoint = None
-        self.write_endpoint = None
+    def __init__(
+        self,
+        serial: str,
+        usb_device: usb.core.Device,
+        read_endpoint: usb.core.Endpoint,
+        write_endpoint: usb.core.Endpoint,
+        read_timeout: int = AbstractTransport.BASE_READ_TIMEOUT,
+        write_timeout: int = AbstractTransport.BASE_WRITE_TIMEOUT,
+    ):
         self.serial = serial
+        self.usb_device = usb_device
+        self.read_endpoint = read_endpoint
+        self.write_endpoint = write_endpoint
         self.read_timeout = read_timeout
         self.write_timeout = write_timeout
-        self._setup_connection()
+
+    @classmethod
+    def connect(
+        cls,
+        serial: str,
+        read_timeout: int = AbstractTransport.BASE_READ_TIMEOUT,
+        write_timeout: int = AbstractTransport.BASE_WRITE_TIMEOUT,
+    ):
+        device = cls._find_device(serial)
+        if device is None:
+            raise exceptions.DeviceNotFoundError(serial=serial)
+
+        try:
+            device.reset()
+            if device.is_kernel_driver_active(0):
+                device.detach_kernel_driver(0)
+        except usb.core.USBError as e:
+            raise exceptions.USBError(serial=serial, exception=e)
+
+        read_ep, write_ep = cls._get_endpoints(device)
+        if read_ep is None or write_ep is None:
+            raise exceptions.USBError(serial=serial)
+
+        transport = cls(serial, device, read_ep, write_ep, read_timeout, write_timeout)
+        transport._flush_buffer()
+        return transport
 
     def send(self, data: bytes) -> None:
         try:
             self.write_endpoint.write(data, self.write_timeout)
-        except usb.USBError as e:
-            raise exceptions.USBError(serial=self.usb_device.serial_number, exception=e)
+        except usb.core.USBError as e:
+            raise exceptions.USBError(serial=self.serial, exception=e)
 
-    def recv(self) -> Response:
-        device_response = b""
-        buffer = b""
-        while True:
-            try:
-                buffer = self.read_endpoint.read(
-                    4096,
-                    self.read_timeout,
-                )
-            except usb.USBError:
-                break
+    def receive(self, size: int = 256) -> bytes:
+        try:
+            return bytes(self.read_endpoint.read(size, self.read_timeout))
+        except usb.core.USBError as e:
+            raise exceptions.USBError(serial=self.serial, exception=e)
 
-            if buffer is None or buffer == b"":
-                break
-            else:
-                device_response += buffer
+    def close(self) -> None:
+        usb.util.dispose_resources(self.usb_device)
 
-        return Response(status=device_response[:4], result=device_response[4:])
-
-    def _make_pyusb_device(self) -> usb.core.Device | None:
-        for pyusb_device in usb.core.find(find_all=True):
-            for cfg in pyusb_device:
-                dev = usb.util.find_descriptor(
+    @staticmethod
+    def _find_device(serial: str) -> usb.core.Device | None:
+        for device in usb.core.find(find_all=True):
+            for cfg in device:
+                iface = usb.util.find_descriptor(
                     cfg,
                     bInterfaceClass=AbstractTransport.FASTBOOT_CLASS,
                     bInterfaceSubClass=AbstractTransport.FASTBOOT_SUBCLASS,
                     bInterfaceProtocol=AbstractTransport.FASTBOOT_PROTOCOL,
                 )
-                if dev is None:
-                    continue
-                else:
+                if iface is not None:
                     try:
-                        if pyusb_device.serial_number == self.serial:
-                            return pyusb_device
+                        if device.serial_number == serial:
+                            return device
                     except ValueError:
                         pass
         return None
 
-    def _get_r_w_endpoints(self, usb_device: usb.core.Device) -> tuple[usb.core.Endpoint | None, usb.core.Endpoint | None]:
-        write_endpoint, read_endpoint = None, None
-        for cfg in usb_device:
+    @staticmethod
+    def _get_endpoints(device: usb.core.Device) -> tuple:
+        read_ep, write_ep = None, None
+        for cfg in device:
             for iface in cfg:
-                for endpoint in iface:
-                    if usb.core.util.endpoint_direction(endpoint.bEndpointAddress) == usb.core.util.ENDPOINT_IN:
-                        read_endpoint = endpoint
+                for ep in iface:
+                    if usb.util.endpoint_direction(ep.bEndpointAddress) == usb.util.ENDPOINT_IN:
+                        read_ep = ep
                     else:
-                        write_endpoint = endpoint
-        return read_endpoint, write_endpoint
-
-    def _setup_connection(self):
-        device = self._make_pyusb_device()
-        if device is None:
-            raise exceptions.DeviceNotFoundError(serial=self.serial)
-        self.usb_device = device
-        self.read_endpoint, self.write_endpoint =  self._get_r_w_endpoints(device)
+                        write_ep = ep
+        return read_ep, write_ep
 
     def _flush_buffer(self) -> None:
         while True:
             try:
-                buffer = self.read_endpoint.read(
-                    4096,
-                    self.read_timeout,
-                )
-            except usb.USBError:
+                data = self.read_endpoint.read(4096, 100)
+            except usb.core.USBError:
                 break
-
-            if buffer is None or buffer == b"":
+            if data is None or len(data) == 0:
                 break
-
-
