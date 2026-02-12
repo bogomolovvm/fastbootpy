@@ -5,9 +5,25 @@ __all__ = [
 ]
 
 
+class CommonTCPException(Exception):
+    def __init__(self):
+        self.message = "Device connection error via TCP."
+
+    def __str__(self) -> str:
+        return self.message
+
+    def __repr__(self) -> str:
+        return self.message
+
+
+class TCPDeviceNotFound(CommonTCPException):
+    def __init__(self, serial):
+        self.message = f"TCP Fastboot device not found. Cred for connection {serial}"
+
+
 class CommonUSBException(Exception):
     def __init__(self) -> None:
-        self.message = "Device connection error."
+        self.message = "Device connection error via USB."
 
     def __str__(self) -> str:
         return self.message
