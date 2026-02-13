@@ -22,7 +22,7 @@ class AbstractTransport(ABC):
         pass
 
     @abstractmethod
-    def receive(self, size: int) -> bytes:
+    def receive(self, size: int = 256) -> bytes:
         pass
 
     @abstractmethod
