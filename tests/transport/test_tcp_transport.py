@@ -18,3 +18,20 @@ class TestTCPTransportSend:
 
         # Assert
         assert packet == b"hello"
+
+    def test_send_to_socket(self):
+        # Arrange
+        mock_socket = MagicMock()
+        transport = TCPTransport(
+            serial="emulator:4445",
+            read_timeout=100,
+            write_timeout=100,
+            client_socket=mock_socket
+        )
+        data = b"hello"
+        # Act
+        transport.send(data)
+
+        # Assert
+        mock_socket.sendall.assert_called_once_with(len(data).to_bytes(8, byteorder="big") + data)
+
